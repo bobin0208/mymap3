@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>영화관 포맷 & 실시간 상영 영화 지도</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background-color: #f8f9fa;
+    }
+    header {
+      background-color: #111827;
+      color: #ffffff;
+      padding: 14px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    header p {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+    .control-panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 16px;
+      background-color: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
+      align-items: center;
+    }
+    .btn {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 16px;
+      background-color: #ffffff;
+      color: #374151;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .btn.active {
+      background-color: #e50914;
+      color: #ffffff;
+      border-color: #e50914;
+    }
+    .btn-location {
+      margin-left: auto;
+      background-color: #1f2937;
+      color: #ffffff;
+      border: none;
+    }
+
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    #map {
+      flex: 1;
+      height: 100%;
+    }
+    .sidebar {
+      width: 320px;
+      background: #ffffff;
+      border-left: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .sidebar-header {
+      padding: 12px 16px;
+      background: #f3f4f6;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: bold;
+      font-size: 0.9rem;
+      color: #1f2937;
+    }
+    .cinema-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .cinema-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .cinema-item:hover {
+      background-color: #f9fafb;
+    }
+    .cinema-title {
+      font-weight: bold;
+      font-size: 0.95rem;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+
+    .format-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin: 6px 0;
+    }
+    .tag {
+      font-size: 10px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: white;
+    }
+    .tag-imax { background-color: #0070d2; }
+    .tag-dolby { background-color: #000000; }
+    .tag-4dx { background-color: #e63946; }
+    .tag-screenx { background-color: #7209b7; }
+    .tag-2d { background-color: #6b7280; }
+
+    .schedule-btn {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 5px 10px;
+      background-color: #e50914;
+      color: white;
+      text-decoration: none;
+      font-size: 11px;
+      font-weight: bold;
+      border-radius: 4px;
+    }
+    .schedule-btn:hover {
+      background-color: #b80710;
+    }
+
+    .custom-overlay {
+      position: relative;
+      bottom: 50px;
+      border-radius: 6px;
+      background: #111827;
+      color: #fff;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: bold;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .info-window {
+      padding: 12px;
+      width: 230px;
+      font-size: 12px;
+    }
+  </style>
+  <!-- 카카오맵 API -->
+  <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=23bd2ab8a894761d1b68c263c015b43a&libraries=services"></script>
+</head>
+<body>
+
+  <header>
+    <h1>🎬 영화관 포맷별 정리 & 실시간 영화 상영 지도</h1>
+    <p>포맷 필터로 모아보고, 클릭 시 현재 상영 중인 영화를 바로 확인하세요!</p>
+  </header>
+
+  <div class="control-panel">
+    <span style="font-size: 0.8rem; font-weight: bold; color: #4b5563;">포맷 필터:</span>
+    <button class="btn active" onclick="filterFormat('ALL', this)">전체보기</button>
+    <button class="btn" onclick="filterFormat('IMAX', this)">IMAX</button>
+    <button class="btn" onclick="filterFormat('DOLBY', this)">Dolby Cinema</button>
+    <button class="btn" onclick="filterFormat('4DX', this)">4DX / ScreenX</button>
+    <button class="btn btn-location" onclick="moveToCurrentLocation()">📍 내 위치</button>
+  </div>
+
+  <div class="main-container">
+    <div id="map"></div>
+    
+    <div class="sidebar">
+      <div class="sidebar-header" id="listHeader">🍿 포맷별 영화관 목록 (0)</div>
+      <ul class="cinema-list" id="cinemaList"></ul>
+    </div>
+  </div>
+
+  <script>
+    let map;
+    let ps;
+    let infowindow;
+    let currentOverlay = null;
+    let allCinemaData = [];
+    let currentFilteredData = [];
+    let activeMarkers = [];
+    let userLocationMarker = null;
+
+    // 🍿 이전 팝콘 아이콘 URL 적용
+    const cinemaMarkerImageSrc = 'https://img.icons8.com/emoji/96/popcorn-emoji.png'; 
+    const imageSize = new kakao.maps.Size(42, 42);
+    const imageOption = { offset: new kakao.maps.Point(21, 42) };
+    const markerImage = new kakao.maps.MarkerImage(cinemaMarkerImageSrc, imageSize, imageOption);
+
+    function initMap() {
+      const container = document.getElementById('map');
+      const options = {
+        center: new kakao.maps.LatLng(37.5665, 126.9780),
+        level: 4
+      };
+
+      map = new kakao.maps.Map(container, options);
+      ps = new kakao.maps.services.Places();
+      infowindow = new kakao.maps.InfoWindow({ zIndex: 1 });
+
+      moveToCurrentLocation();
+    }
+
+    function moveToCurrentLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const locPosition = new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude);
+
+            if (userLocationMarker) userLocationMarker.setMap(null);
+
+            userLocationMarker = new kakao.maps.Marker({
+              map: map,
+              position: locPosition
+            });
+
+            map.setCenter(locPosition);
+            searchCinemas();
+          },
+          () => { searchCinemas(); }
+        );
+      } else { searchCinemas(); }
+    }
+
+    function searchCinemas() {
+      const center = map.getCenter();
+      ps.keywordSearch('영화관', (data, status) => {
+        if (status === kakao.maps.services.Status.OK) {
+          allCinemaData = data;
+          currentFilteredData = data;
+          renderCinemas(allCinemaData);
+        }
+      }, { location: center, radius: 6000 });
+    }
+
+    function getCinemaFormats(name) {
+      const formats = [];
+      if (name.includes('CGV')) {
+        formats.push({ name: '2D/3D', class: 'tag-2d' });
+        if (name.includes('용산') || name.includes('왕십리') || name.includes('천호') || name.includes('소풍') || name.includes('수원')) {
+          formats.push({ name: 'IMAX', class: 'tag-imax' });
+        }
+        formats.push({ name: '4DX', class: 'tag-4dx' });
+        formats.push({ name: 'ScreenX', class: 'tag-screenx' });
+      } else if (name.includes('메가박스')) {
+        formats.push({ name: '2D/3D', class: 'tag-2d' });
+        if (name.includes('코엑스') || name.includes('안성') || name.includes('남양주') || name.includes('대전') || name.includes('대구')) {
+          formats.push({ name: 'Dolby Cinema', class: 'tag-dolby' });
+        }
+        formats.push({ name: 'MX', class: 'tag-dolby' });
+      } else if (name.includes('롯데시네마')) {
+        formats.push({ name: '2D/3D', class: 'tag-2d' });
+        formats.push({ name: 'SUPER PLEX', class: 'tag-imax' });
+      } else {
+        formats.push({ name: '2D 일반관', class: 'tag-2d' });
+      }
+      return formats;
+    }
+
+    function renderCinemas(cinemaList) {
+      removeMarkers();
+      if (currentOverlay) currentOverlay.setMap(null);
+
+      const listContainer = document.getElementById('cinemaList');
+      const listHeader = document.getElementById('listHeader');
+      listContainer.innerHTML = '';
+      listHeader.innerText = `🍿 포맷별 영화관 목록 (${cinemaList.length}곳)`;
+
+      const bounds = new kakao.maps.LatLngBounds();
+
+      cinemaList.forEach((place) => {
+        const markerPosition = new kakao.maps.LatLng(place.y, place.x);
+        const formats = getCinemaFormats(place.place_name);
+
+        const marker = new kakao.maps.Marker({
+          map: map,
+          position: markerPosition,
+          image: markerImage
+        });
+
+        activeMarkers.push(marker);
+        bounds.extend(markerPosition);
+
+        let tagsHtml = formats.map(f => `<span class="tag ${f.class}">${f.name}</span>`).join('');
+        const scheduleUrl = place.place_url;
+
+        kakao.maps.event.addListener(marker, 'click', function () {
+          selectCinema(place, formats, tagsHtml, scheduleUrl, markerPosition, marker);
+        });
+
+        const li = document.createElement('li');
+        li.className = 'cinema-item';
+        li.innerHTML = `
+          <div class="cinema-title">${place.place_name}</div>
+          <div class="format-tags">${tagsHtml}</div>
+          <a class="schedule-btn" href="${scheduleUrl}" target="_blank">🎬 상영 영화 & 시간표 확인 ➔</a>
+        `;
+        li.onclick = () => {
+          map.setCenter(markerPosition);
+          selectCinema(place, formats, tagsHtml, scheduleUrl, markerPosition, marker);
+        };
+        listContainer.appendChild(li);
+      });
+
+      if (cinemaList.length > 0) {
+        map.setBounds(bounds);
+      }
+    }
+
+    function selectCinema(place, formats, tagsHtml, scheduleUrl, position, marker) {
+      const content = `
+        <div class="info-window">
+          <h4 style="font-weight:bold; font-size:14px;">${place.place_name}</h4>
+          <div class="format-tags">${tagsHtml}</div>
+          <p style="color:#666; font-size:11px; margin:4px 0;">📍 ${place.road_address_name || place.address_name}</p>
+          <a class="schedule-btn" href="${scheduleUrl}" target="_blank">🎬 실시간 상영 영화 확인 ➔</a>
+        </div>
+      `;
+      infowindow.setContent(content);
+      infowindow.open(map, marker);
+      showCustomOverlay(position, place.place_name);
+    }
+
+    function filterFormat(formatType, btnElement) {
+      document.querySelectorAll('.control-panel .btn').forEach(btn => {
+        if (!btn.classList.contains('btn-location')) btn.classList.remove('active');
+      });
+      btnElement.classList.add('active');
+
+      if (formatType === 'ALL') {
+        currentFilteredData = allCinemaData;
+      } else {
+        currentFilteredData = allCinemaData.filter(place => {
+          const formats = getCinemaFormats(place.place_name);
+          return formats.some(f => f.name.toUpperCase().includes(formatType));
+        });
+      }
+      renderCinemas(currentFilteredData);
+    }
+
+    function showCustomOverlay(position, title) {
+      if (currentOverlay) currentOverlay.setMap(null);
+      currentOverlay = new kakao.maps.CustomOverlay({
+        map: map,
+        position: position,
+        content: `<div class="custom-overlay">${title}</div>`,
+        yAnchor: 1.3
+      });
+    }
+
+    function removeMarkers() {
+      activeMarkers.forEach(m => m.setMap(null));
+      activeMarkers = [];
+    }
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
